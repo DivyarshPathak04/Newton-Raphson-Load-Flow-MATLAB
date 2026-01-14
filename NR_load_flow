@@ -1,0 +1,103 @@
+clc;
+clear;
+
+%% Y-bus matrix
+Y = [10-30j -5+15j -5+15j;
+    -5+15j 10-30j -5+15j;
+    -5+15j -5+15j 10-30j];
+
+G = real(Y);
+B = imag(Y);
+
+%% Specified power (P & Q)
+Psp = [0; -1; -0.8];
+Qsp = [0; -0.5; -0.3];
+
+%% Initial values (Flat start)
+V = [1; 1; 1];
+delta = [0; 0; 0];
+
+tolerance = 1e-4;
+max_iter = 10;
+
+mismatch_history = [];
+
+%% Newton-Raphson Iteration
+for iter = 1:max_iter
+    
+    %% Calculate P and Q
+    P = zeros(3,1);
+    Q = zeros(3,1);
+    
+    for i = 2:3
+        for j = 1:3
+            P(i) = P(i) + V(i)*V(j)*( ...
+                G(i,j)*cos(delta(i)-delta(j)) + ...
+                B(i,j)*sin(delta(i)-delta(j)));
+            
+            Q(i) = Q(i) + V(i)*V(j)*( ...
+                G(i,j)*sin(delta(i)-delta(j)) - ...
+                B(i,j)*cos(delta(i)-delta(j)));
+        end
+    end
+    
+    %% Power mismatch
+    dP = Psp(2:3) - P(2:3);
+    dQ = Qsp(2:3) - Q(2:3);
+    
+    mismatch = [dP; dQ];
+    
+    mismatch_history(iter) = max(abs(mismatch));
+    
+    if mismatch_history(iter) < tolerance
+        fprintf('Converged in %d iterations\n', iter);
+        break;
+    end
+    
+    %% Jacobian Matrix
+    J1 = zeros(2);
+    J2 = zeros(2);
+    J3 = zeros(2);
+    J4 = zeros(2);
+    
+    for i = 2:3
+        for j = 2:3
+            if i == j
+                J1(i-1,j-1) = -Q(i) - B(i,i)*V(i)^2;
+                J2(i-1,j-1) = P(i)/V(i) + G(i,i)*V(i);
+                J3(i-1,j-1) = P(i) - G(i,i)*V(i)^2;
+                J4(i-1,j-1) = Q(i)/V(i) - B(i,i)*V(i);
+            else
+                J1(i-1,j-1) = V(i)*V(j)*( ...
+                    G(i,j)*sin(delta(i)-delta(j)) - ...
+                    B(i,j)*cos(delta(i)-delta(j)));
+                
+                J2(i-1,j-1) = V(i)*( ...
+                    G(i,j)*cos(delta(i)-delta(j)) + ...
+                    B(i,j)*sin(delta(i)-delta(j)));
+                
+                J3(i-1,j-1) = -V(i)*V(j)*( ...
+                    G(i,j)*cos(delta(i)-delta(j)) + ...
+                    B(i,j)*sin(delta(i)-delta(j)));
+                
+                J4(i-1,j-1) = V(i)*( ...
+                    G(i,j)*sin(delta(i)-delta(j)) - ...
+                    B(i,j)*cos(delta(i)-delta(j)));
+            end
+        end
+    end
+    
+    J = [J1 J2; J3 J4];
+    
+    %% Solve corrections
+    X = J \ mismatch;
+    
+    delta(2:3) = delta(2:3) + X(1:2);
+    V(2:3) = V(2:3) + X(3:4);
+end
+
+%% Display Results
+disp('Bus Voltages:');
+for i = 1:3
+    fprintf('Bus %d: %.4f ∠ %.2f°\n', i, V(i), delta(i)*180/pi);
+end
